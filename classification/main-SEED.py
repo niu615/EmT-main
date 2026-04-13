@@ -13,14 +13,14 @@ if __name__ == '__main__':
     ######## Data ########
     parser.add_argument('--ROOT', type=str, default=current_dir)
     parser.add_argument('--dataset', type=str, default='SEED')
-    parser.add_argument('--data-path', type=str, default="D:\DingYi\Dataset\SEED\SEED\Preprocessed_EEG")    # change this accordingly
+    parser.add_argument('--data-path', type=str, default="/root/autodl-tmp/emt_project/Preprocessed_EEG")# change this accordingly
     parser.add_argument('--subjects', type=int, default=15)
-    parser.add_argument('--data-exist', default=False)  # skip data preparation by default
+    parser.add_argument('--data-exist', default=True)  # skip data preparation by default
 
     parser.add_argument('--fold-to-run', type=int, default=7)
     parser.add_argument('--num-class', type=int, default=2, choices=[2, 3, 4])
     parser.add_argument('--label-type', type=str, default='NA', choices=['A', 'V', 'D', 'L', 'NA'])
-    parser.add_argument('--session-to-load', default=[1])
+    parser.add_argument('--session-to-load', default=[1,2,3])
     parser.add_argument('--segment', type=int, default=20)
     parser.add_argument('--overlap', type=float, default=0.8)
     parser.add_argument('--sub-segment', type=int, default=2,  help="Window length of each time sequence")  #2 for EmT

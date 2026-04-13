@@ -138,7 +138,7 @@ class ChebyNet(Module):
 
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, dropout = 0.):
+    def __init__(self, dim, hidden_dim, dropout = 0.5):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(dim, hidden_dim),
@@ -209,7 +209,7 @@ class GraphEncoder(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads = 8, dim_head = 64, anchor=3, dropout = 0., alpha=0.25):
+    def __init__(self, dim, heads = 8, dim_head = 64, anchor=3, dropout = 0.5, alpha=0.25):
         super().__init__()
         inner_dim = dim_head *  heads
         project_out = not (heads == 1 and dim_head == dim)
@@ -249,7 +249,7 @@ class Attention(nn.Module):
 
 
 class TTransformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout=0., alpha=0.25):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout=0.5, alpha=0.25):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
@@ -341,7 +341,7 @@ if __name__ == "__main__":
     data = torch.ones((16, 8, 62, 7))
     emt = EmT(layers_graph=[1, 2], layers_transformer=4, num_adj=2,
               num_chan=62, num_feature=7, hidden_graph=32,
-              K=4, num_head=16, dim_head=32, dropout=0.25, num_class=2,
+              K=4, num_head=16, dim_head=32, dropout=0.5, num_class=2,
               graph2token='Linear', encoder_type='Cheby', alpha=0.25)
     print(emt)
     print(count_parameters(emt))

@@ -83,11 +83,10 @@ def train(args, data_train, label_train, data_val, label_val, subject, trial):
         model = model.cuda()
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
-
     if args.LS:
         loss_fn = LabelSmoothing(args.LS_rate)
     else:
-        loss_fn = nn.CrossEntropyLoss()
+        loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
 
     def save_model(name):
         torch.save(model.state_dict(), osp.join(args.save_path, name + '.pth'))
@@ -131,8 +130,7 @@ def train(args, data_train, label_train, data_val, label_val, subject, trial):
         acc_val, f1_val, _ = get_metrics(y_pred=pred_val, y_true=act_val)
         print('epoch {}, val, loss={:.4f} acc={:.4f} f1={:.4f}'.
               format(epoch, loss_val, acc_val, f1_val))
-
-        if acc_val >= trlog['max_acc'] and epoch >= int(0.2*args.max_epoch) and acc_train >= 0.7:
+        if acc_val >= trlog['max_acc'] and epoch >= int(0.2*args.max_epoch) and acc_train >= 0.7:  
             trlog['max_acc'] = acc_val
             save_model('candidate')
             print('Model saved!:{}'.format(acc_train))
@@ -177,7 +175,7 @@ def test(args, data, label, reproduce, subject, trial, model_to_load='candidate.
     model = get_model(args)
     if CUDA:
         model = model.cuda()
-    loss_fn = nn.CrossEntropyLoss()
+        loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
 
     if reproduce:
         model_name_reproduce = 'sub' + str(subject) + '_trial' + str(trial) + '.pth'
@@ -194,4 +192,21 @@ def test(args, data, label, reproduce, subject, trial, model_to_load='candidate.
     acc, f1, _ = get_metrics(y_pred=pred, y_true=act)
     print('>>> Test:  loss={:.4f} acc={:.4f} f1={:.4f}'.format(loss, acc, f1))
     return acc, pred, act
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

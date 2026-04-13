@@ -89,7 +89,7 @@ def get_dataloader(data, label, batch_size):
 
 def get_metrics(y_pred, y_true, classes=None):
     acc = accuracy_score(y_true, y_pred)
-    f1 = f1_score(y_true, y_pred)
+    f1 = f1_score(y_true, y_pred, average='binary')
     if classes is not None:
         cm = confusion_matrix(y_true, y_pred, labels=classes)
     else:
