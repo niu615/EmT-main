@@ -1,0 +1,10 @@
+data_processed/
+results/
+paper/
+classification/__pycache__/
+classification/base/__pycache__/
+classification/datasets/__pycache__/
+classification/model/__pycache__/
+classification/save/
+regression/__pycache__/
+*.pyc

@@ -75,7 +75,10 @@ def get_model(args):
         model = EmT(layers_graph=args.layers_graph, layers_transformer=args.layers_transformer, num_adj=args.num_adj,
                     num_chan=args.num_channel, num_feature=args.num_feature, hidden_graph=args.hidden_graph,
                     K=args.K, num_head=args.num_head, dim_head=args.dim_head, dropout=args.dropout, num_class=args.num_class,
-                    graph2token=args.graph2token, encoder_type=args.encoder_type, alpha=args.alpha)
+                    graph2token=args.graph2token, encoder_type=args.encoder_type, alpha=args.alpha,
+                    use_simam=args.use_simam, fusion_mode=args.fusion_mode, pooling_mode=args.pooling_mode,
+                    sta_kernel_sizes=args.sta_kernels, adj_sparsity_weight=args.adj_sparsity_weight,
+                    adj_diversity_weight=args.adj_diversity_weight)
 
     return model
 

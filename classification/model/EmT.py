@@ -1,419 +1,53 @@
-# # This is the network script    #最初版本
-# import torch
-# import torch.nn as nn
-# from einops import rearrange
-# import torch.nn.functional as F
-# from torch.nn.utils import weight_norm
-# from torch.nn.parameter import Parameter
-# from torch.nn.modules.module import Module
-# import math
-# DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-# class GraphConvolution(Module):
-#     """
-#     LGG-specific GCN layer
-#     """
+import math
 
-#     def __init__(self, in_features, out_features, bias=True):
-#         super(GraphConvolution, self).__init__()
-#         self.in_features = in_features
-#         self.out_features = out_features
-#         self.weight = Parameter(torch.FloatTensor(in_features, out_features))
-#         torch.nn.init.xavier_uniform_(self.weight, gain=1.414)
-#         if bias:
-#             self.bias = Parameter(torch.zeros((1, 1, out_features), dtype=torch.float32))
-#         else:
-#             self.register_parameter('bias', None)
-#         #self.reset_parameters()
-
-#     def reset_parameters(self):
-#         stdv = 1. / math.sqrt(self.weight.size(1))
-#         self.weight.data.uniform_(-stdv, stdv)
-#         if self.bias is not None:
-#             self.bias.data.uniform_(-stdv, stdv)
-
-#     def forward(self, x, adj):
-#         output = torch.matmul(x, self.weight)-self.bias
-#         output = F.relu(torch.matmul(adj, output))
-#         return output
-
-
-# class GCN(Module):
-#     """
-#     Simple GCN layer, similar to https://arxiv.org/abs/1609.02907
-#     """
-
-#     def __init__(self, in_features, out_features, bias=True):
-#         super(GCN, self).__init__()
-#         self.in_features = in_features
-#         self.out_features = out_features
-#         self.weight = Parameter(torch.FloatTensor(in_features, out_features))
-#         if bias:
-#             self.bias = Parameter(torch.FloatTensor(out_features))
-#         else:
-#             self.register_parameter('bias', None)
-#         self.reset_parameters()
-
-#     def reset_parameters(self):
-#         stdv = 1. / math.sqrt(self.weight.size(1))
-#         self.weight.data.uniform_(-stdv, stdv)
-#         if self.bias is not None:
-#             self.bias.data.uniform_(-stdv, stdv)
-
-#     def forward(self, data):
-#         graph, adj = data
-#         adj = self.norm_adj(adj)
-#         support = torch.matmul(graph, self.weight)
-#         output = torch.matmul(adj, support)
-#         if self.bias is not None:
-#             output = (F.relu(output + self.bias), adj)
-#         else:
-#             output = (F.relu(output), adj)
-#         return output
-
-#     def norm_adj(self, adj):
-#         rowsum = torch.sum(adj, dim=-1)
-#         mask = torch.zeros_like(rowsum)
-#         mask[rowsum == 0] = 1
-#         rowsum += mask
-#         d_inv_sqrt = torch.pow(rowsum, -0.5)
-#         d_mat_inv_sqrt = torch.diag_embed(d_inv_sqrt)
-#         adj = torch.mm(torch.mm(d_mat_inv_sqrt, adj), d_mat_inv_sqrt)
-#         return adj
-
-
-# class ChebyNet(Module):
-#     def __init__(self, K, in_feature, out_feature):
-#         super(ChebyNet, self).__init__()
-#         self.K = K
-#         self.filter_weight, self.filter_bias = self.init_fliter(K, in_feature, out_feature)
-
-#     def init_fliter(self, K, feature, out, bias=True):
-#         weight = nn.Parameter(torch.FloatTensor(K, 1, feature, out), requires_grad=True)
-#         nn.init.normal_(weight, 0, 0.1)
-#         bias_ = None
-#         if bias == True:
-#             bias_ = nn.Parameter(torch.zeros((1, 1, out), dtype=torch.float32), requires_grad=True)
-#             nn.init.normal_(bias_, 0, 0.1)
-#         return weight, bias_
-
-#     def get_L(self, adj):
-#         degree = torch.sum(adj, dim=1)
-#         degree_norm = torch.div(1.0, torch.sqrt(degree) + 1.0e-5)
-#         degree_matrix = torch.diag(degree_norm)
-#         # we approximate lambda_max ~= 2
-#         L = - torch.matmul(torch.matmul(degree_matrix, adj), degree_matrix)
-#         return L
-
-#     def rescale_L(self, L):
-#         largest_eigval, _ = torch.linalg.eigh(L)
-#         largest_eigval = torch.max(largest_eigval)
-#         L = (2. / largest_eigval) * L - torch.eye(L.size(0), device=L.device, dtype=torch.float)
-#         return L
-
-#     def chebyshev(self, x, L):
-#         # to do graph convolution here] X_0 = X, X_1 = L.X, X_k = 2.L.X_(k-1) - X_(k-2)
-#         x1 = torch.matmul(L, x)
-#         x_ = torch.stack((x, x1), dim=1)  # (b, 2, chan, fin)
-#         if self.K > 1:
-#             for k in range(2, self.K):
-#                 x_current = 2 * torch.matmul(L, x_[:, -1]) - x_[:, -2]  # X_k = 2.L.X_(k-1) - X_(k-2)
-#                 x_current = x_current.unsqueeze(dim=1)
-#                 x_ = torch.cat((x_, x_current), dim=1)
-
-#         x_ = x_.permute(1, 0, 2, 3)  # (k, b, chan, fin)   w: (k, 1, fin, fout) f:
-#         out = torch.matmul(x_, self.filter_weight)  # (k, b, chan, fout)
-#         out = torch.sum(out, dim=0)  # (b, chan, fout)
-#         out = F.relu(out + self.filter_bias)
-#         return out
-
-#     def forward(self, data):
-#         # x: (b, chan, f) adj
-#         x, adj = data
-#         L = self.get_L(adj)
-#         out = self.chebyshev(x, L)
-#         out = (out, adj)
-#         return out
-
-
-# class FeedForward(nn.Module):
-#     def __init__(self, dim, hidden_dim, dropout = 0.):
-#         super().__init__()
-#         self.net = nn.Sequential(
-#             nn.Linear(dim, hidden_dim),
-#             nn.ReLU(),
-#             nn.Dropout(dropout),
-#             nn.Linear(hidden_dim, dim),
-#             nn.Dropout(dropout)
-#         )
-
-#     def forward(self, x):
-#         return self.net(x)
-
-
-# class PreNorm(nn.Module):
-#     def __init__(self, dim, fn):
-#         super().__init__()
-#         self.norm = nn.LayerNorm(dim)
-#         self.fn = fn
-
-#     def forward(self, x, **kwargs):
-#         return self.fn(self.norm(x), **kwargs)
-
-
-# class GraphEncoder(nn.Module):
-#     def __init__(self, num_layers, num_node, in_features, out_features, K,
-#                  graph2token='Linear', encoder_type='GCN'):
-#         super(GraphEncoder, self).__init__()
-#         self.graph2token = graph2token
-#         self.K = K  # useful for ChebyNet
-#         assert graph2token in ['Linear', 'AvgPool', 'MaxPool', 'Flatten'], "graph2vector type is not supported!"
-#         if graph2token == 'Linear':
-#             self.tokenizer = nn.Linear(num_node*out_features, out_features)
-#         else:
-#             self.tokenizer = None
-#         layers = []
-#         for i in range(num_layers):
-#             if i == 0:
-#                 layer = self.get_layer(encoder_type, in_features, out_features)
-#             else:
-#                 layer = self.get_layer(encoder_type, out_features, out_features)
-#             layers.append(layer)
-#         self.encoder = nn.Sequential(*layers)
-
-#     def get_layer(self, encoder_type, in_features, out_features):
-#         assert encoder_type in ['Cheby', 'GCN'], "encoder type is not supported!"
-#         if encoder_type == 'GCN':
-#             GNN = GCN(in_features, out_features)
-#         if encoder_type == 'Cheby':
-#             GNN = ChebyNet(self.K, in_features, out_features)
-#         return GNN
-
-#     def forward(self, x, adj):
-#         # x: b, channel, feature
-#         # adj: m, n, n
-#         output = self.encoder((x, adj))
-#         x, _ = output
-#         if self.tokenizer is not None:
-#             x = x.view(x.size(0), -1)
-#             output = self.tokenizer(x)
-#         else:
-#             if self.graph2token == 'AvgPool':
-#                 output = torch.mean(x, dim=-1)
-#             elif self.graph2token == 'MaxPool':
-#                 output = torch.max(x, dim=-1)[0]
-#             else:
-#                 output = x.view(x.size(0), -1)
-#         return output
-
-
-# class Attention(nn.Module):
-#     def __init__(self, dim, heads = 8, dim_head = 64, anchor=3, dropout = 0., alpha=0.25):
-#         super().__init__()
-#         inner_dim = dim_head *  heads
-#         project_out = not (heads == 1 and dim_head == dim)
-
-#         self.heads = heads
-#         self.scale = dim_head ** -0.5
-
-#         self.attend = nn.Softmax(dim = -1)
-#         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
-
-#         self.STA = nn.Sequential(
-#             nn.Dropout(alpha * dropout),
-#             weight_norm(nn.Conv2d(self.heads, self.heads, (anchor, 1),
-#                                   stride=1, padding=self.get_padding(anchor))),
-#         )
-
-#         self.to_out = nn.Sequential(
-#             nn.Linear(inner_dim, dim),
-#             nn.Dropout(dropout)
-#         ) if project_out else nn.Identity()
-
-#     def forward(self, x):
-#         qkv = self.to_qkv(x).chunk(3, dim = -1)
-#         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
-
-#         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
-
-#         attn = self.attend(dots)
-
-#         out = torch.matmul(attn, v)
-#         out = self.STA(out)
-#         out = rearrange(out, 'b h n d -> b n (h d)')
-#         return self.to_out(out)
-
-#     def get_padding(self, kernel):
-#         return (int(0.5 * (kernel - 1)), 0)
-
-
-# class TTransformer(nn.Module):
-#     def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout=0., alpha=0.25):
-#         super().__init__()
-#         self.layers = nn.ModuleList([])
-#         for _ in range(depth):
-#             self.layers.append(nn.ModuleList([
-#                 PreNorm(dim, Attention(dim, heads=heads, dim_head=dim_head, dropout=dropout, alpha=alpha)),
-#                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout=dropout))
-#             ]))
-
-#     def forward(self, x):
-#         for attn, ff in self.layers:
-#             x = attn(x) + x
-#             x = ff(x) + x
-#         return x
-
-
-# class EmT(nn.Module):
-#     def __init__(self, layers_graph=[1, 2], layers_transformer=1, num_adj=3, num_chan=62,
-#                  num_feature=5, hidden_graph=16, K=2, num_head=8, dim_head=16,
-#                  dropout=0.25, num_class=3, alpha=0.25, graph2token='Linear', encoder_type='GCN'):
-#         super(EmT, self).__init__()
-#         self.graph_encoder_type = encoder_type
-#         self.GE1 = GraphEncoder(
-#             num_layers=layers_graph[0], num_node=num_chan, in_features=num_feature,
-#             out_features=hidden_graph, K=K, graph2token=graph2token, encoder_type=encoder_type
-#         )
-#         self.GE2 = GraphEncoder(
-#             num_layers=layers_graph[1], num_node=num_chan, in_features=num_feature,
-#             out_features=hidden_graph, K=K, graph2token=graph2token, encoder_type=encoder_type
-#         )
-
-#         self.adjs = nn.Parameter(torch.FloatTensor(num_adj, num_chan, num_chan), requires_grad=True)
-#         nn.init.xavier_uniform_(self.adjs)
-
-#         if graph2token in ['AvgPool', 'MaxPool']:
-#             hidden_graph = num_chan
-#         if graph2token == 'Flatten':
-#             hidden_graph = num_chan*hidden_graph
-
-#         self.transformer = TTransformer(
-#             depth=layers_transformer,
-#             dim=hidden_graph, heads=num_head,
-#             dim_head=dim_head, dropout=dropout, mlp_dim=dim_head,
-#             alpha=alpha
-#         )
-#         self.to_GNN_out = nn.Linear(num_chan*num_feature, hidden_graph, bias=False)
-
-#         self.MLP = nn.Sequential(
-#             nn.Linear(hidden_graph, num_class)
-#         )
-#     def forward(self, x):
-#         # x: batch, sequence, chan, feature
-#         b, s, chan, f = x.size()
-#         x = rearrange(x, 'b s c f  -> (b s) c f')
-#         if self.graph_encoder_type == 'Cheby':
-#             adjs = self.get_adj(self_loop=False)
-#         else:
-#             adjs = self.get_adj()
-
-#         # multi-view pyramid residual GNN block
-#         x_ = x.view(x.size(0), -1)
-#         x_ = self.to_GNN_out(x_)
-#         x1 = self.GE1(x, adjs[0])
-#         x2 = self.GE2(x, adjs[1])
-#         x = torch.stack((x_, x1, x2), dim=1)
-#         x = torch.mean(x, dim=1)
-#         # temporal contextual transformer
-#         x = rearrange(x, '(b s) h -> b s h', b=b, s=s)
-#         x = self.transformer(x)
-#         x = torch.mean(x, dim=-2)
-#         x = self.MLP(x)
-#         return x
-#     def get_adj(self, self_loop=True):
-#         # self.adjs : n, node, node
-#         num_nodes = self.adjs.shape[-1]
-#         adj = F.relu(self.adjs + self.adjs.transpose(2, 1))
-#         if self_loop:
-#             adj = adj + torch.eye(num_nodes).to(DEVICE)
-#         return adj
-
-
-# def count_parameters(model):
-#     return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-
-# if __name__ == "__main__":
-#     data = torch.ones((16, 8, 62, 7))
-#     emt = EmT(layers_graph=[1, 2], layers_transformer=4, num_adj=2,
-#               num_chan=62, num_feature=7, hidden_graph=32,
-#               K=4, num_head=16, dim_head=32, dropout=0.25, num_class=2,
-#               graph2token='Linear', encoder_type='Cheby', alpha=0.25)
-#     print(emt)
-#     print(count_parameters(emt))
-
-#     out = emt(data)
-#     print('Done')
-
-
-
-
-
-
-
-
-
-# ####################################################引入simam模块
-# This is the network script
 import torch
 import torch.nn as nn
-from einops import rearrange
 import torch.nn.functional as F
-from torch.nn.utils import weight_norm
-from torch.nn.parameter import Parameter
+from einops import rearrange
 from torch.nn.modules.module import Module
-import math
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+from torch.nn.parameter import Parameter
+from torch.nn.utils import weight_norm
 
 
 class GraphConvolution(Module):
-    """
-    LGG-specific GCN layer
-    """
-
     def __init__(self, in_features, out_features, bias=True):
-        super(GraphConvolution, self).__init__()
-        self.in_features = in_features
-        self.out_features = out_features
+        super().__init__()
         self.weight = Parameter(torch.FloatTensor(in_features, out_features))
-        torch.nn.init.xavier_uniform_(self.weight, gain=1.414)
+        nn.init.xavier_uniform_(self.weight, gain=1.414)
         if bias:
             self.bias = Parameter(torch.zeros((1, 1, out_features), dtype=torch.float32))
         else:
-            self.register_parameter('bias', None)
-
-    def reset_parameters(self):
-        stdv = 1. / math.sqrt(self.weight.size(1))
-        self.weight.data.uniform_(-stdv, stdv)
-        if self.bias is not None:
-            self.bias.data.uniform_(-stdv, stdv)
+            self.register_parameter("bias", None)
 
     def forward(self, x, adj):
-        output = torch.matmul(x, self.weight)-self.bias
-        output = F.relu(torch.matmul(adj, output))
-        return output
+        output = torch.matmul(x, self.weight)
+        if self.bias is not None:
+            output = output - self.bias
+        return F.relu(torch.matmul(adj, output))
 
 
 class GCN(Module):
-    """
-    Simple GCN layer, similar to https://arxiv.org/abs/1609.02907
-    """
-
     def __init__(self, in_features, out_features, bias=True):
-        super(GCN, self).__init__()
-        self.in_features = in_features
-        self.out_features = out_features
+        super().__init__()
         self.weight = Parameter(torch.FloatTensor(in_features, out_features))
         if bias:
             self.bias = Parameter(torch.FloatTensor(out_features))
         else:
-            self.register_parameter('bias', None)
+            self.register_parameter("bias", None)
         self.reset_parameters()
 
     def reset_parameters(self):
-        stdv = 1. / math.sqrt(self.weight.size(1))
+        stdv = 1.0 / math.sqrt(self.weight.size(1))
         self.weight.data.uniform_(-stdv, stdv)
         if self.bias is not None:
             self.bias.data.uniform_(-stdv, stdv)
+
+    def norm_adj(self, adj):
+        rowsum = torch.sum(adj, dim=-1)
+        rowsum = rowsum + (rowsum == 0).float()
+        d_inv_sqrt = torch.pow(rowsum, -0.5)
+        d_mat_inv_sqrt = torch.diag_embed(d_inv_sqrt)
+        return torch.mm(torch.mm(d_mat_inv_sqrt, adj), d_mat_inv_sqrt)
 
     def forward(self, data):
         graph, adj = data
@@ -421,82 +55,61 @@ class GCN(Module):
         support = torch.matmul(graph, self.weight)
         output = torch.matmul(adj, support)
         if self.bias is not None:
-            output = (F.relu(output + self.bias), adj)
-        else:
-            output = (F.relu(output), adj)
-        return output
-
-    def norm_adj(self, adj):
-        rowsum = torch.sum(adj, dim=-1)
-        mask = torch.zeros_like(rowsum)
-        mask[rowsum == 0] = 1
-        rowsum += mask
-        d_inv_sqrt = torch.pow(rowsum, -0.5)
-        d_mat_inv_sqrt = torch.diag_embed(d_inv_sqrt)
-        adj = torch.mm(torch.mm(d_mat_inv_sqrt, adj), d_mat_inv_sqrt)
-        return adj
+            output = output + self.bias
+        return F.relu(output), adj
 
 
 class ChebyNet(Module):
-    def __init__(self, K, in_feature, out_feature):
-        super(ChebyNet, self).__init__()
-        self.K = K
-        self.filter_weight, self.filter_bias = self.init_fliter(K, in_feature, out_feature)
+    def __init__(self, k_order, in_feature, out_feature):
+        super().__init__()
+        self.K = k_order
+        self.filter_weight, self.filter_bias = self.init_filter(k_order, in_feature, out_feature)
 
-    def init_fliter(self, K, feature, out, bias=True):
-        weight = nn.Parameter(torch.FloatTensor(K, 1, feature, out), requires_grad=True)
+    def init_filter(self, k_order, feature, out, bias=True):
+        weight = nn.Parameter(torch.FloatTensor(k_order, 1, feature, out), requires_grad=True)
         nn.init.normal_(weight, 0, 0.1)
         bias_ = None
-        if bias == True:
+        if bias:
             bias_ = nn.Parameter(torch.zeros((1, 1, out), dtype=torch.float32), requires_grad=True)
             nn.init.normal_(bias_, 0, 0.1)
         return weight, bias_
 
-    def get_L(self, adj):
+    @staticmethod
+    def get_laplacian(adj):
         degree = torch.sum(adj, dim=1)
         degree_norm = torch.div(1.0, torch.sqrt(degree) + 1.0e-5)
         degree_matrix = torch.diag(degree_norm)
-        L = - torch.matmul(torch.matmul(degree_matrix, adj), degree_matrix)
-        return L
+        return -torch.matmul(torch.matmul(degree_matrix, adj), degree_matrix)
 
-    def rescale_L(self, L):
-        largest_eigval, _ = torch.linalg.eigh(L)
-        largest_eigval = torch.max(largest_eigval)
-        L = (2. / largest_eigval) * L - torch.eye(L.size(0), device=L.device, dtype=torch.float)
-        return L
-
-    def chebyshev(self, x, L):
-        x1 = torch.matmul(L, x)
-        x_ = torch.stack((x, x1), dim=1)  # (b, 2, chan, fin)
+    def chebyshev(self, x, laplacian):
+        x1 = torch.matmul(laplacian, x)
+        x_ = torch.stack((x, x1), dim=1)
         if self.K > 1:
-            for k in range(2, self.K):
-                x_current = 2 * torch.matmul(L, x_[:, -1]) - x_[:, -2]  # X_k = 2.L.X_(k-1) - X_(k-2)
-                x_current = x_current.unsqueeze(dim=1)
-                x_ = torch.cat((x_, x_current), dim=1)
+            for _ in range(2, self.K):
+                x_current = 2 * torch.matmul(laplacian, x_[:, -1]) - x_[:, -2]
+                x_ = torch.cat((x_, x_current.unsqueeze(dim=1)), dim=1)
 
-        x_ = x_.permute(1, 0, 2, 3)  # (k, b, chan, fin)   w: (k, 1, fin, fout) f:
-        out = torch.matmul(x_, self.filter_weight)  # (k, b, chan, fout)
-        out = torch.sum(out, dim=0)  # (b, chan, fout)
-        out = F.relu(out + self.filter_bias)
-        return out
+        x_ = x_.permute(1, 0, 2, 3)
+        out = torch.matmul(x_, self.filter_weight)
+        out = torch.sum(out, dim=0)
+        return F.relu(out + self.filter_bias)
 
     def forward(self, data):
         x, adj = data
-        L = self.get_L(adj)
-        out = self.chebyshev(x, L)
-        out = (out, adj)
-        return out
+        laplacian = self.get_laplacian(adj)
+        out = self.chebyshev(x, laplacian)
+        return out, adj
 
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, dropout = 0.):
+    def __init__(self, dim, hidden_dim, dropout=0.0):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(dim, hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
-            nn.Dropout(dropout)
+            nn.Dropout(dropout),
         )
 
     def forward(self, x):
@@ -514,19 +127,15 @@ class PreNorm(nn.Module):
 
 
 class GraphEncoder(nn.Module):
-    def __init__(self, num_layers, num_node, in_features, out_features, K,
-                 graph2token='Linear', encoder_type='GCN'):
-        super(GraphEncoder, self).__init__()
+    def __init__(self, num_layers, num_node, in_features, out_features, k_order, graph2token="Linear", encoder_type="GCN"):
+        super().__init__()
         self.graph2token = graph2token
-        self.K = K  
-        assert graph2token in ['Linear', 'AvgPool', 'MaxPool', 'Flatten'], "graph2vector type is not supported!"
-        if graph2token == 'Linear':
-            self.tokenizer = nn.Linear(num_node*out_features, out_features)
-        else:
-            self.tokenizer = None
+        self.K = k_order
+        assert graph2token in ["Linear", "AvgPool", "MaxPool", "Flatten"], "graph2vector type is not supported!"
+        self.tokenizer = nn.Linear(num_node * out_features, out_features) if graph2token == "Linear" else None
         layers = []
-        for i in range(num_layers):
-            if i == 0:
+        for layer_idx in range(num_layers):
+            if layer_idx == 0:
                 layer = self.get_layer(encoder_type, in_features, out_features)
             else:
                 layer = self.get_layer(encoder_type, out_features, out_features)
@@ -534,78 +143,104 @@ class GraphEncoder(nn.Module):
         self.encoder = nn.Sequential(*layers)
 
     def get_layer(self, encoder_type, in_features, out_features):
-        assert encoder_type in ['Cheby', 'GCN'], "encoder type is not supported!"
-        if encoder_type == 'GCN':
-            GNN = GCN(in_features, out_features)
-        if encoder_type == 'Cheby':
-            GNN = ChebyNet(self.K, in_features, out_features)
-        return GNN
+        assert encoder_type in ["Cheby", "GCN"], "encoder type is not supported!"
+        if encoder_type == "GCN":
+            return GCN(in_features, out_features)
+        return ChebyNet(self.K, in_features, out_features)
 
     def forward(self, x, adj):
         output = self.encoder((x, adj))
         x, _ = output
         if self.tokenizer is not None:
-            x = x.view(x.size(0), -1)
-            output = self.tokenizer(x)
-        else:
-            if self.graph2token == 'AvgPool':
-                output = torch.mean(x, dim=-1)
-            elif self.graph2token == 'MaxPool':
-                output = torch.max(x, dim=-1)[0]
-            else:
-                output = x.view(x.size(0), -1)
-        return output
+            return self.tokenizer(torch.flatten(x, start_dim=1))
+        if self.graph2token == "AvgPool":
+            return torch.mean(x, dim=-1)
+        if self.graph2token == "MaxPool":
+            return torch.max(x, dim=-1)[0]
+        return torch.flatten(x, start_dim=1)
+
+
+class MultiScaleSTA(nn.Module):
+    def __init__(self, heads, kernel_sizes, dropout=0.0):
+        super().__init__()
+        self.kernel_sizes = list(kernel_sizes)
+        self.convs = nn.ModuleList(
+            [
+                weight_norm(
+                    nn.Conv2d(
+                        heads,
+                        heads,
+                        (kernel_size, 1),
+                        stride=1,
+                        padding=(int(0.5 * (kernel_size - 1)), 0),
+                    )
+                )
+                for kernel_size in self.kernel_sizes
+            ]
+        )
+        self.dropout = nn.Dropout(dropout)
+        self.scale_logits = nn.Parameter(torch.zeros(len(self.kernel_sizes)))
+
+    def forward(self, x):
+        outputs = [conv(self.dropout(x)) for conv in self.convs]
+        if len(outputs) == 1:
+            return outputs[0]
+        weights = torch.softmax(self.scale_logits, dim=0)
+        mixed = torch.stack(outputs, dim=0)
+        return torch.sum(weights.view(-1, 1, 1, 1, 1) * mixed, dim=0)
 
 
 class Attention(nn.Module):
-    def __init__(self, dim, heads = 8, dim_head = 64, anchor=3, dropout = 0., alpha=0.25):
+    def __init__(self, dim, heads=8, dim_head=64, kernel_sizes=(3,), dropout=0.0, alpha=0.25):
         super().__init__()
         inner_dim = dim_head * heads
         project_out = not (heads == 1 and dim_head == dim)
 
         self.heads = heads
         self.scale = dim_head ** -0.5
-
-        self.attend = nn.Softmax(dim = -1)
-        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
-
-        self.STA = nn.Sequential(
-            nn.Dropout(alpha * dropout),
-            weight_norm(nn.Conv2d(self.heads, self.heads, (anchor, 1),
-                                  stride=1, padding=self.get_padding(anchor))),
+        self.attend = nn.Softmax(dim=-1)
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
+        self.sta = MultiScaleSTA(heads, kernel_sizes, dropout=alpha * dropout)
+        self.to_out = (
+            nn.Sequential(nn.Linear(inner_dim, dim), nn.Dropout(dropout))
+            if project_out
+            else nn.Identity()
         )
 
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, dim),
-            nn.Dropout(dropout)
-        ) if project_out else nn.Identity()
-
     def forward(self, x):
-        qkv = self.to_qkv(x).chunk(3, dim = -1)
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
-
+        qkv = self.to_qkv(x).chunk(3, dim=-1)
+        q, k, v = map(lambda t: rearrange(t, "b n (h d) -> b h n d", h=self.heads), qkv)
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
-
         attn = self.attend(dots)
-
         out = torch.matmul(attn, v)
-        out = self.STA(out)
-        out = rearrange(out, 'b h n d -> b n (h d)')
+        out = self.sta(out)
+        out = rearrange(out, "b h n d -> b n (h d)")
         return self.to_out(out)
-
-    def get_padding(self, kernel):
-        return (int(0.5 * (kernel - 1)), 0)
 
 
 class TTransformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout=0., alpha=0.25):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, kernel_sizes=(3,), dropout=0.0, alpha=0.25):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                PreNorm(dim, Attention(dim, heads=heads, dim_head=dim_head, dropout=dropout, alpha=alpha)),
-                PreNorm(dim, FeedForward(dim, mlp_dim, dropout=dropout))
-            ]))
+            self.layers.append(
+                nn.ModuleList(
+                    [
+                        PreNorm(
+                            dim,
+                            Attention(
+                                dim,
+                                heads=heads,
+                                dim_head=dim_head,
+                                kernel_sizes=kernel_sizes,
+                                dropout=dropout,
+                                alpha=alpha,
+                            ),
+                        ),
+                        PreNorm(dim, FeedForward(dim, mlp_dim, dropout=dropout)),
+                    ]
+                )
+            )
 
     def forward(self, x):
         for attn, ff in self.layers:
@@ -614,140 +249,203 @@ class TTransformer(nn.Module):
         return x
 
 
-# =========================================================================
-# =============== 新增：无参注意力模块 (SimAM) 1D 适配版 ====================
-# =========================================================================
-class SimAM_1D(nn.Module):
-    """
-    无参注意力模块 (SimAM) 的 1D 序列适配版
-    0个可学习参数，依靠能量函数计算注意力权重，完美避免 EEG 过拟合
-    """
+class SimAM1D(nn.Module):
     def __init__(self, e_lambda=1e-4):
-        super(SimAM_1D, self).__init__()
+        super().__init__()
         self.activation = nn.Sigmoid()
         self.e_lambda = e_lambda
 
     def forward(self, x):
-        # x 的输入形状预期为 (Batch, Sequence, Hidden_dim)
-        # 我们在 Sequence 维度上计算能量权重
-        x_permuted = x.permute(0, 2, 1) # 变为 (Batch, Hidden_dim, Sequence)
-        s = x_permuted.size(2)
-        n = s - 1
-        
-        # 计算均值和方差相关的能量项
+        x_permuted = x.permute(0, 2, 1)
+        seq_len = x_permuted.size(2)
+        n = max(seq_len - 1, 1)
         x_minus_mu_square = (x_permuted - x_permuted.mean(dim=2, keepdim=True)).pow(2)
-        y = x_minus_mu_square / (4 * (x_minus_mu_square.sum(dim=2, keepdim=True) / n + self.e_lambda)) + 0.5
-        
-        # 施加注意力权重并还原形状
-        out = x_permuted * self.activation(y)
-        return out.permute(0, 2, 1) # 还原为 (Batch, Sequence, Hidden_dim)
-# =========================================================================
+        energy = x_minus_mu_square / (4 * (x_minus_mu_square.sum(dim=2, keepdim=True) / n + self.e_lambda)) + 0.5
+        return (x_permuted * self.activation(energy)).permute(0, 2, 1)
+
+
+class AdaptiveFusion(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.gate = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, 1))
+
+    def forward(self, tokens):
+        weights = torch.softmax(self.gate(tokens), dim=1)
+        return torch.sum(tokens * weights, dim=1)
+
+
+class AttentionPooling(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.score = nn.Linear(dim, 1)
+
+    def forward(self, x):
+        weights = torch.softmax(self.score(x), dim=1)
+        return torch.sum(x * weights, dim=1)
 
 
 class EmT(nn.Module):
-    def __init__(self, layers_graph=[1, 2], layers_transformer=1, num_adj=3, num_chan=62,
-                 num_feature=5, hidden_graph=16, K=2, num_head=8, dim_head=16,
-                 dropout=0.25, num_class=3, alpha=0.25, graph2token='Linear', encoder_type='GCN'):
-        super(EmT, self).__init__()
+    def __init__(
+        self,
+        layers_graph=(1, 2),
+        layers_transformer=1,
+        num_adj=3,
+        num_chan=62,
+        num_feature=5,
+        hidden_graph=16,
+        K=2,
+        num_head=8,
+        dim_head=16,
+        dropout=0.25,
+        num_class=3,
+        alpha=0.25,
+        graph2token="Linear",
+        encoder_type="GCN",
+        use_simam=True,
+        fusion_mode="mean",
+        pooling_mode="mean",
+        sta_kernel_sizes=(3,),
+        adj_sparsity_weight=0.0,
+        adj_diversity_weight=0.0,
+    ):
+        super().__init__()
         self.graph_encoder_type = encoder_type
-        self.GE1 = GraphEncoder(
-            num_layers=layers_graph[0], num_node=num_chan, in_features=num_feature,
-            out_features=hidden_graph, K=K, graph2token=graph2token, encoder_type=encoder_type
+        self.fusion_mode = fusion_mode
+        self.pooling_mode = pooling_mode
+        self.use_simam = use_simam
+        self.adj_sparsity_weight = adj_sparsity_weight
+        self.adj_diversity_weight = adj_diversity_weight
+
+        self.ge1 = GraphEncoder(
+            num_layers=layers_graph[0],
+            num_node=num_chan,
+            in_features=num_feature,
+            out_features=hidden_graph,
+            k_order=K,
+            graph2token=graph2token,
+            encoder_type=encoder_type,
         )
-        self.GE2 = GraphEncoder(
-            num_layers=layers_graph[1], num_node=num_chan, in_features=num_feature,
-            out_features=hidden_graph, K=K, graph2token=graph2token, encoder_type=encoder_type
+        self.ge2 = GraphEncoder(
+            num_layers=layers_graph[1],
+            num_node=num_chan,
+            in_features=num_feature,
+            out_features=hidden_graph,
+            k_order=K,
+            graph2token=graph2token,
+            encoder_type=encoder_type,
         )
 
         self.adjs = nn.Parameter(torch.FloatTensor(num_adj, num_chan, num_chan), requires_grad=True)
         nn.init.xavier_uniform_(self.adjs)
 
-        if graph2token in ['AvgPool', 'MaxPool']:
-            hidden_graph = num_chan
-        if graph2token == 'Flatten':
-            hidden_graph = num_chan*hidden_graph
+        token_dim = hidden_graph
+        if graph2token in ["AvgPool", "MaxPool"]:
+            token_dim = num_chan
+        if graph2token == "Flatten":
+            token_dim = num_chan * hidden_graph
 
         self.transformer = TTransformer(
             depth=layers_transformer,
-            dim=hidden_graph, heads=num_head,
-            dim_head=dim_head, dropout=dropout, mlp_dim=dim_head,
-            alpha=alpha
+            dim=token_dim,
+            heads=num_head,
+            dim_head=dim_head,
+            dropout=dropout,
+            mlp_dim=dim_head,
+            alpha=alpha,
+            kernel_sizes=sta_kernel_sizes,
         )
+        self.to_gnn_out = nn.Linear(num_chan * num_feature, token_dim, bias=False)
+        self.fusion = AdaptiveFusion(token_dim) if fusion_mode == "adaptive" else None
+        self.simam = SimAM1D() if use_simam else nn.Identity()
+        self.attention_pool = AttentionPooling(token_dim) if pooling_mode == "attention" else None
+        self.mlp = nn.Linear(token_dim, num_class)
 
-        self.to_GNN_out = nn.Linear(num_chan*num_feature, hidden_graph, bias=False)
-
-        self.MLP = nn.Sequential(
-            nn.Linear(hidden_graph, num_class)
-        )
-        
-        # === 新增：初始化无参注意力模块 ===
-        self.simam = SimAM_1D()
-
-    def forward(self, x):
-        # x: batch, sequence, chan, feature
-        b, s, chan, f = x.size()
-        x = rearrange(x, 'b s c f  -> (b s) c f')
-        if self.graph_encoder_type == 'Cheby':
-            adjs = self.get_adj(self_loop=False)
-        else:
-            adjs = self.get_adj()
-
-        # multi-view pyramid residual GNN block
-        x_ = x.view(x.size(0), -1)
-        x_ = self.to_GNN_out(x_)
-        x1 = self.GE1(x, adjs[0])
-        x2 = self.GE2(x, adjs[1])
-        
-        # 【恢复原版】：使用无参数的均值融合，完美防止过拟合
-        x = torch.stack((x_, x1, x2), dim=1)
-        x = torch.mean(x, dim=1) 
-        
-        # temporal contextual transformer
-        x = rearrange(x, '(b s) h -> b s h', b=b, s=s)
-        
-        # === 新增：在进入 Transformer 之前，用 SimAM 无参提纯特征 ===
-        x = self.simam(x)
-        
-        x = self.transformer(x)
-        x = torch.mean(x, dim=-2)
-        x = self.MLP(x)
-        return x
+    def get_base_adj(self):
+        return F.relu(self.adjs + self.adjs.transpose(2, 1))
 
     def get_adj(self, self_loop=True):
-        # self.adjs : n, node, node
-        num_nodes = self.adjs.shape[-1]
-        adj = F.relu(self.adjs + self.adjs.transpose(2, 1))
+        adj = self.get_base_adj()
         if self_loop:
-            adj = adj + torch.eye(num_nodes).to(DEVICE)
+            eye = torch.eye(adj.shape[-1], device=adj.device, dtype=adj.dtype).unsqueeze(0)
+            adj = adj + eye
         return adj
+
+    def fuse_tokens(self, tokens):
+        if self.fusion is not None:
+            return self.fusion(tokens)
+        return torch.mean(tokens, dim=1)
+
+    def pool_sequence(self, x):
+        if self.attention_pool is not None:
+            return self.attention_pool(x)
+        return torch.mean(x, dim=1)
+
+    def forward(self, x):
+        batch_size, seq_len, _, _ = x.size()
+        x = rearrange(x, "b s c f -> (b s) c f")
+        adjs = self.get_adj(self_loop=self.graph_encoder_type != "Cheby")
+
+        x_skip = self.to_gnn_out(torch.flatten(x, start_dim=1))
+        x1 = self.ge1(x, adjs[0])
+        x2 = self.ge2(x, adjs[1])
+        x = self.fuse_tokens(torch.stack((x_skip, x1, x2), dim=1))
+
+        x = rearrange(x, "(b s) h -> b s h", b=batch_size, s=seq_len)
+        x = self.simam(x)
+        x = self.transformer(x)
+        x = self.pool_sequence(x)
+        return self.mlp(x)
+
+    def regularization_terms(self):
+        zero = self.adjs.new_tensor(0.0)
+        base_adj = self.get_base_adj()
+        eye = torch.eye(base_adj.shape[-1], device=base_adj.device, dtype=base_adj.dtype).unsqueeze(0)
+        off_diag = base_adj * (1 - eye)
+
+        sparse = off_diag.abs().mean() if self.adj_sparsity_weight > 0 else zero
+        diverse = zero
+        if self.adj_diversity_weight > 0 and off_diag.shape[0] > 1:
+            flat_adj = off_diag.reshape(off_diag.shape[0], -1)
+            norm_adj = F.normalize(flat_adj, dim=1)
+            pair_losses = []
+            for idx in range(norm_adj.shape[0]):
+                for jdx in range(idx + 1, norm_adj.shape[0]):
+                    pair_losses.append(torch.square(torch.sum(norm_adj[idx] * norm_adj[jdx])))
+            if pair_losses:
+                diverse = torch.stack(pair_losses).mean()
+
+        total = self.adj_sparsity_weight * sparse + self.adj_diversity_weight * diverse
+        return {"sparse": sparse, "diverse": diverse, "total": total}
 
 
 def count_parameters(model):
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    return sum(param.numel() for param in model.parameters() if param.requires_grad)
 
 
 if __name__ == "__main__":
     data = torch.ones((16, 8, 62, 7))
-    emt = EmT(layers_graph=[1, 2], layers_transformer=4, num_adj=2,
-              num_chan=62, num_feature=7, hidden_graph=32,
-              K=4, num_head=16, dim_head=32, dropout=0.25, num_class=2,
-              graph2token='Linear', encoder_type='Cheby', alpha=0.25)
-    print(emt)
-    print(count_parameters(emt))
-
-    out = emt(data)
-    print('Done')
-############################################################
-
-
-
-
-
-
-
-
-
-
-
-
-
+    model = EmT(
+        layers_graph=[1, 2],
+        layers_transformer=4,
+        num_adj=2,
+        num_chan=62,
+        num_feature=7,
+        hidden_graph=32,
+        K=4,
+        num_head=16,
+        dim_head=32,
+        dropout=0.25,
+        num_class=2,
+        graph2token="Linear",
+        encoder_type="Cheby",
+        use_simam=True,
+        fusion_mode="adaptive",
+        pooling_mode="attention",
+        sta_kernel_sizes=[3, 5],
+        adj_sparsity_weight=1e-4,
+        adj_diversity_weight=1e-3,
+    )
+    print(model)
+    print(count_parameters(model))
+    out = model(data)
+    print("Done", out.shape)
