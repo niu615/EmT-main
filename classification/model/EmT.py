@@ -380,7 +380,10 @@ class EmT(nn.Module):
             return self.attention_pool(x)
         return torch.mean(x, dim=1)
 
-    def forward(self, x):
+    def classify_feature(self, feature):
+        return self.mlp(feature)
+
+    def forward(self, x, return_feature=False):
         batch_size, seq_len, _, _ = x.size()
         x = rearrange(x, "b s c f -> (b s) c f")
         adjs = self.get_adj(self_loop=self.graph_encoder_type != "Cheby")
@@ -393,8 +396,11 @@ class EmT(nn.Module):
         x = rearrange(x, "(b s) h -> b s h", b=batch_size, s=seq_len)
         x = self.simam(x)
         x = self.transformer(x)
-        x = self.pool_sequence(x)
-        return self.mlp(x)
+        feature = self.pool_sequence(x)
+        logits = self.classify_feature(feature)
+        if return_feature:
+            return logits, feature
+        return logits
 
     def regularization_terms(self):
         zero = self.adjs.new_tensor(0.0)

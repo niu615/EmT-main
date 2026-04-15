@@ -69,11 +69,17 @@ def build_args():
     parser.add_argument("--alpha", type=float, default=0.25)
     parser.add_argument("--LS", type=int, default=1, choices=[0, 1], help="Label smoothing")
     parser.add_argument("--LS-rate", type=float, default=0.1)
+    parser.add_argument("--train-mode", type=str, default="erm", choices=["erm", "rsc", "rdrop"])
+    parser.add_argument("--rsc-start-epoch", type=int, default=2)
+    parser.add_argument("--rsc-drop-ratio", type=float, default=0.3)
+    parser.add_argument("--rdrop-weight", type=float, default=0.0)
+    parser.add_argument("--grad-accum-steps", type=int, default=1)
 
     parser.add_argument("--gpu", default="0")
     parser.add_argument("--save-model", type=int, default=1)
     parser.add_argument("--experiment-name", type=str, default="manual_seed_run")
     parser.add_argument("--result-root", type=str, default=str(PROJECT_ROOT / "results" / "SEED"))
+    parser.add_argument("--subjects-to-run", type=str, default="")
 
     ######## Model Parameters ########
     parser.add_argument("--model", type=str, default="EmT")
@@ -134,7 +140,10 @@ def build_args():
 
 if __name__ == "__main__":
     args = build_args()
-    sub_to_run = np.arange(args.subjects)
+    if args.subjects_to_run:
+        sub_to_run = np.array(parse_int_list(args.subjects_to_run), dtype=int)
+    else:
+        sub_to_run = np.arange(args.subjects)
 
     if not args.data_exist:
         pd = SEED(args)

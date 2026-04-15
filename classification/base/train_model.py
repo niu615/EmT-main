@@ -2,6 +2,7 @@ import os.path as osp
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from base.utils import (
     Averager,
@@ -18,25 +19,102 @@ from base.utils import (
 CUDA = torch.cuda.is_available()
 
 
-def compute_total_loss(net, logits, targets, loss_fn):
-    base_loss = loss_fn(logits, targets)
-    reg_total = base_loss.new_tensor(0.0)
+def compute_regularization(net, reference_tensor):
+    reg_total = reference_tensor.new_tensor(0.0)
     reg_terms = {}
     if hasattr(net, "regularization_terms"):
         reg_terms = net.regularization_terms()
         reg_total = reg_terms.get("total", reg_total)
-    return base_loss + reg_total, base_loss.detach(), reg_terms
+    return reg_total, reg_terms
 
 
-def train_one_epoch(data_loader, net, loss_fn, optimizer):
+def symmetric_kl(logits_a, logits_b):
+    log_prob_a = F.log_softmax(logits_a, dim=-1)
+    log_prob_b = F.log_softmax(logits_b, dim=-1)
+    prob_a = log_prob_a.exp()
+    prob_b = log_prob_b.exp()
+    kl_ab = F.kl_div(log_prob_a, prob_b, reduction="batchmean")
+    kl_ba = F.kl_div(log_prob_b, prob_a, reduction="batchmean")
+    return 0.5 * (kl_ab + kl_ba)
+
+
+def build_rsc_mask(feature, logits, targets, drop_ratio):
+    if drop_ratio <= 0:
+        return torch.ones_like(feature)
+
+    true_logits = logits.gather(dim=1, index=targets.unsqueeze(1)).sum()
+    grads = torch.autograd.grad(true_logits, feature, retain_graph=True, create_graph=False)[0]
+    importance = torch.abs(grads.detach() * feature.detach())
+    drop_count = min(feature.size(1), max(1, int(feature.size(1) * drop_ratio)))
+    if drop_count <= 0:
+        return torch.ones_like(feature)
+
+    topk_indices = torch.topk(importance, k=drop_count, dim=1).indices
+    mask = torch.ones_like(feature)
+    mask.scatter_(1, topk_indices, 0.0)
+    return mask
+
+
+def compute_batch_outputs(net, x_batch, y_batch, loss_fn, args, epoch):
+    use_rsc = args.train_mode == "rsc"
+    use_rdrop = args.rdrop_weight > 0 and args.train_mode in {"rsc", "rdrop"}
+    need_feature = use_rsc
+
+    if need_feature:
+        logits_main, feature = net(x_batch, return_feature=True)
+    else:
+        logits_main = net(x_batch)
+        feature = None
+
+    ce_main = loss_fn(logits_main, y_batch)
+    masked_loss = logits_main.new_tensor(0.0)
+    logits_for_pred = logits_main
+
+    if use_rdrop:
+        logits_aux = net(x_batch)
+        ce_aux = loss_fn(logits_aux, y_batch)
+        kl_loss = symmetric_kl(logits_main, logits_aux)
+        cls_loss = 0.5 * (ce_main + ce_aux) + args.rdrop_weight * kl_loss
+        logits_for_pred = 0.5 * (logits_main + logits_aux)
+    else:
+        kl_loss = logits_main.new_tensor(0.0)
+        cls_loss = ce_main
+
+    if use_rsc and epoch >= args.rsc_start_epoch:
+        mask = build_rsc_mask(feature, logits_main, y_batch, args.rsc_drop_ratio)
+        logits_masked = net.classify_feature(feature * mask)
+        masked_loss = loss_fn(logits_masked, y_batch)
+        if use_rdrop:
+            cls_loss = cls_loss + masked_loss
+        else:
+            cls_loss = 0.5 * ce_main + 0.5 * masked_loss
+
+    reg_total, reg_terms = compute_regularization(net, cls_loss)
+    total_loss = cls_loss + reg_total
+    return {
+        "total_loss": total_loss,
+        "base_loss": cls_loss.detach(),
+        "reg_terms": reg_terms,
+        "masked_loss": masked_loss.detach(),
+        "kl_loss": kl_loss.detach(),
+        "logits": logits_for_pred.detach(),
+    }
+
+
+def train_one_epoch(data_loader, net, loss_fn, optimizer, args, epoch):
     net.train()
     tl = Averager()
     base_tl = Averager()
     reg_tl = Averager()
+    masked_tl = Averager()
+    kl_tl = Averager()
     pred_train = []
     act_train = []
 
-    for data_batch in data_loader:
+    accum_steps = max(int(args.grad_accum_steps), 1)
+    optimizer.zero_grad()
+
+    for step_idx, data_batch in enumerate(data_loader, start=1):
         if CUDA:
             x_batch, y_batch = data_batch[0].cuda(), data_batch[1].cuda()
         else:
@@ -46,20 +124,38 @@ def train_one_epoch(data_loader, net, loss_fn, optimizer):
             x_batch = torch.cat((x_batch, x_batch), dim=0)
             y_batch = torch.cat((y_batch, y_batch), dim=0)
 
-        optimizer.zero_grad()
-        out = net(x_batch)
-        loss, base_loss, reg_terms = compute_total_loss(net, out, y_batch, loss_fn)
-        loss.backward()
-        optimizer.step()
+        batch_outputs = compute_batch_outputs(
+            net=net,
+            x_batch=x_batch,
+            y_batch=y_batch,
+            loss_fn=loss_fn,
+            args=args,
+            epoch=epoch,
+        )
+        (batch_outputs["total_loss"] / accum_steps).backward()
 
-        _, pred = torch.max(out, 1)
-        tl.add(loss.item())
-        base_tl.add(base_loss.item())
-        reg_tl.add(reg_terms.get("total", base_loss.new_tensor(0.0)).item())
+        if step_idx % accum_steps == 0 or step_idx == len(data_loader):
+            optimizer.step()
+            optimizer.zero_grad()
+
+        _, pred = torch.max(batch_outputs["logits"], 1)
+        tl.add(batch_outputs["total_loss"].item())
+        base_tl.add(batch_outputs["base_loss"].item())
+        reg_tl.add(batch_outputs["reg_terms"].get("total", batch_outputs["base_loss"].new_tensor(0.0)).item())
+        masked_tl.add(batch_outputs["masked_loss"].item())
+        kl_tl.add(batch_outputs["kl_loss"].item())
         pred_train.extend(pred.data.tolist())
         act_train.extend(y_batch.data.tolist())
 
-    return tl.item(), base_tl.item(), reg_tl.item(), pred_train, act_train
+    return (
+        tl.item(),
+        base_tl.item(),
+        reg_tl.item(),
+        masked_tl.item(),
+        kl_tl.item(),
+        pred_train,
+        act_train,
+    )
 
 
 def predict(data_loader, net, loss_fn):
@@ -123,6 +219,8 @@ def train(args, data_train, label_train, data_val, label_val, subject, trial):
         "train_loss": [],
         "train_base_loss": [],
         "train_reg_loss": [],
+        "train_mask_loss": [],
+        "train_kl_loss": [],
         "val_loss": [],
         "train_acc": [],
         "val_acc": [],
@@ -135,17 +233,34 @@ def train(args, data_train, label_train, data_val, label_val, subject, trial):
     model_saved = False
 
     for epoch in range(1, max_epoch + 1):
-        loss_train, base_loss_train, reg_loss_train, pred_train, act_train = train_one_epoch(
+        (
+            loss_train,
+            base_loss_train,
+            reg_loss_train,
+            mask_loss_train,
+            kl_loss_train,
+            pred_train,
+            act_train,
+        ) = train_one_epoch(
             data_loader=train_loader,
             net=model,
             loss_fn=loss_fn,
             optimizer=optimizer,
+            args=args,
+            epoch=epoch,
         )
 
         acc_train, f1_train, _ = get_metrics(y_pred=pred_train, y_true=act_train)
         print(
-            "epoch {}, loss={:.4f} base={:.4f} reg={:.4f} acc={:.4f} f1={:.4f}".format(
-                epoch, loss_train, base_loss_train, reg_loss_train, acc_train, f1_train
+            "epoch {}, loss={:.4f} base={:.4f} reg={:.4f} mask={:.4f} kl={:.4f} acc={:.4f} f1={:.4f}".format(
+                epoch,
+                loss_train,
+                base_loss_train,
+                reg_loss_train,
+                mask_loss_train,
+                kl_loss_train,
+                acc_train,
+                f1_train,
             )
         )
 
@@ -159,22 +274,11 @@ def train(args, data_train, label_train, data_val, label_val, subject, trial):
             print("Model saved!:{}".format(acc_train))
             model_saved = True
 
-        if model_saved and epoch >= args.max_epoch:
-            print("Reach initial max epoch")
-            break
-        if model_saved and epoch >= potential_epochs[0]:
-            print("Reach max epoch: {}".format(potential_epochs[0]))
-            break
-        if model_saved and epoch >= potential_epochs[1]:
-            print("Reach max epoch: {}".format(potential_epochs[1]))
-            break
-        if model_saved and epoch >= potential_epochs[2]:
-            print("Reach max epoch: {}".format(potential_epochs[2]))
-            break
-
         trlog["train_loss"].append(loss_train)
         trlog["train_base_loss"].append(base_loss_train)
         trlog["train_reg_loss"].append(reg_loss_train)
+        trlog["train_mask_loss"].append(mask_loss_train)
+        trlog["train_kl_loss"].append(kl_loss_train)
         trlog["train_acc"].append(acc_train)
         trlog["val_loss"].append(loss_val)
         trlog["val_acc"].append(acc_val)
@@ -187,6 +291,19 @@ def train(args, data_train, label_train, data_val, label_val, subject, trial):
                 trial,
             )
         )
+
+        if model_saved and epoch >= args.max_epoch:
+            print("Reach initial max epoch")
+            break
+        if model_saved and epoch >= potential_epochs[0]:
+            print("Reach max epoch: {}".format(potential_epochs[0]))
+            break
+        if model_saved and epoch >= potential_epochs[1]:
+            print("Reach max epoch: {}".format(potential_epochs[1]))
+            break
+        if model_saved and epoch >= potential_epochs[2]:
+            print("Reach max epoch: {}".format(potential_epochs[2]))
+            break
 
     assert model_saved, "No model is saved!!!"
     save_name_ = "trlog" + save_name + ".pt"

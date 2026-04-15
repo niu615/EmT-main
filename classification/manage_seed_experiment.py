@@ -47,6 +47,30 @@ EXPERIMENTS = {
         "compare_against": "paperfix",
         "preserve": False,
     },
+    "sdrmpg_rsc": {
+        "branch": "feat/seed_sdrmpg_rsc",
+        "parent_branch": "feat/seed_sdrmpg",
+        "fallback_branch": "feat/seed_sdrmpg",
+        "result_dir": RESULT_ROOT / "07_seed_sdrmpg_rsc",
+        "compare_against": "sdrmpg",
+        "preserve": False,
+    },
+    "sdrmpg_rsc_rdrop": {
+        "branch": "feat/seed_sdrmpg_rsc_rdrop",
+        "parent_branch": "feat/seed_sdrmpg_rsc",
+        "fallback_branch": "feat/seed_sdrmpg_rsc",
+        "result_dir": RESULT_ROOT / "08_seed_sdrmpg_rsc_rdrop",
+        "compare_against": "sdrmpg_rsc",
+        "preserve": False,
+    },
+    "sdrmpg_rdrop": {
+        "branch": "feat/seed_sdrmpg_rdrop",
+        "parent_branch": "feat/seed_sdrmpg",
+        "fallback_branch": "feat/seed_sdrmpg",
+        "result_dir": RESULT_ROOT / "08_seed_sdrmpg_rdrop",
+        "compare_against": "sdrmpg",
+        "preserve": False,
+    },
 }
 
 
