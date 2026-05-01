@@ -18,9 +18,17 @@ from run_seed_experiment import PRESETS
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RESULT_ROOT = PROJECT_ROOT / "results" / "SEED"
 DEFAULT_OUTPUT = RESULT_ROOT / "16_seed_sdrmpg_source_val_nll_selector"
+DEFAULT_GUARDED_OUTPUT = RESULT_ROOT / "17_seed_guarded_3way_source_val_selector"
 EXPERIMENTS = {
+    "00_seed_paperfix": "paperfix",
     "01_seed_sdrmpg": "sdrmpg",
     "07_seed_sdrmpg_rsc": "sdrmpg_rsc",
+}
+PAIR_EXPERIMENTS = ("01_seed_sdrmpg", "07_seed_sdrmpg_rsc")
+GUARDED_EXPERIMENTS = ("00_seed_paperfix", "01_seed_sdrmpg", "07_seed_sdrmpg_rsc")
+EXPECTED_RESULTS = {
+    "pair_nll": (0.8000420875420875, 0.7952559053268958),
+    "guarded_3way": (0.8049242424242424, 0.8022636506611381),
 }
 
 
@@ -136,6 +144,42 @@ def metrics_from_logits(logits, labels):
     return float(acc), float(f1)
 
 
+def short_name(experiment_name):
+    if experiment_name.startswith("00_"):
+        return "00"
+    if experiment_name.startswith("01_"):
+        return "01"
+    if experiment_name.startswith("07_"):
+        return "07"
+    raise ValueError(f"Unknown experiment name: {experiment_name}")
+
+
+def select_pair_nll(row):
+    if row["source_val_nll_01"] < row["source_val_nll_07"]:
+        return "01_seed_sdrmpg", "lower_source_val_nll_01_vs_07"
+    return "07_seed_sdrmpg_rsc", "lower_source_val_nll_01_vs_07"
+
+
+def select_guarded_3way(row):
+    pair_model, pair_reason = select_pair_nll(row)
+    paperfix_allowed = (
+        row["source_val_nll_00"] < min(row["source_val_nll_01"], row["source_val_nll_07"])
+        and row["source_val_acc_00"] >= max(row["source_val_acc_01"], row["source_val_acc_07"])
+        and row["source_val_nll_00"] <= 0.32
+    )
+    if paperfix_allowed:
+        return "00_seed_paperfix", "paperfix_guarded_by_val_nll_val_acc_and_nll_cap"
+    return pair_model, f"fallback_{pair_reason}"
+
+
+def select_model(row, selector_mode):
+    if selector_mode == "pair_nll":
+        return select_pair_nll(row)
+    if selector_mode == "guarded_3way":
+        return select_guarded_3way(row)
+    raise ValueError(f"Unsupported selector mode: {selector_mode}")
+
+
 def mean(values):
     return float(np.mean(values)) if values else 0.0
 
@@ -165,9 +209,11 @@ def run_selector(args):
 
     cv_args = build_eval_args("sdrmpg_rsc", output_dir)
     cv = CrossValidation(cv_args)
+    experiment_names = PAIR_EXPERIMENTS if args.selector_mode == "pair_nll" else GUARDED_EXPERIMENTS
     model_args = {
         experiment_name: build_eval_args(preset_name, output_dir)
         for experiment_name, preset_name in EXPERIMENTS.items()
+        if experiment_name in experiment_names
     }
 
     rows = []
@@ -176,27 +222,27 @@ def run_selector(args):
         row = {"subject": int(subject)}
         test_metrics = {}
 
-        for experiment_name in EXPERIMENTS:
+        for experiment_name in experiment_names:
             model = load_model(model_args[experiment_name], experiment_name, subject, device)
             val_logits, val_labels = collect_logits(model, data_val, label_val, device, args.batch_size)
             test_logits, test_labels = collect_logits(model, data_test, label_test, device, args.batch_size)
             val_nll = nll_from_logits(val_logits, val_labels)
+            val_acc, val_f1 = metrics_from_logits(val_logits, val_labels)
             test_acc, test_f1 = metrics_from_logits(test_logits, test_labels)
 
-            short_name = "01" if experiment_name.startswith("01_") else "07"
-            row[f"source_val_nll_{short_name}"] = val_nll
-            row[f"test_acc_{short_name}"] = test_acc
-            row[f"test_f1_{short_name}"] = test_f1
+            name = short_name(experiment_name)
+            row[f"source_val_nll_{name}"] = val_nll
+            row[f"source_val_acc_{name}"] = val_acc
+            row[f"source_val_f1_{name}"] = val_f1
+            row[f"test_acc_{name}"] = test_acc
+            row[f"test_f1_{name}"] = test_f1
             test_metrics[experiment_name] = {"test_acc": test_acc, "test_f1": test_f1}
 
-        selected_model = (
-            "01_seed_sdrmpg"
-            if row["source_val_nll_01"] < row["source_val_nll_07"]
-            else "07_seed_sdrmpg_rsc"
-        )
+        selected_model, selection_reason = select_model(row, args.selector_mode)
         selected = test_metrics[selected_model]
         baseline = test_metrics["07_seed_sdrmpg_rsc"]
         row["selected_model"] = selected_model
+        row["selection_reason"] = selection_reason
         row["test_acc"] = selected["test_acc"]
         row["test_f1"] = selected["test_f1"]
         row["delta_vs_07"] = selected["test_acc"] - baseline["test_acc"]
@@ -212,18 +258,36 @@ def run_selector(args):
     weak_rows = [row for row in rows if row["subject"] in weak_subjects]
     strong_rows = [row for row in rows if row["subject"] in strong_subjects]
 
+    selected_model_counts = {}
+    for row in rows:
+        selected_model_counts[row["selected_model"]] = selected_model_counts.get(row["selected_model"], 0) + 1
+
     summary = {
         "dataset": "SEED",
         "experiment_name": output_dir.name,
         "result_dir": str(output_dir),
-        "selector": "source_val_lower_nll_01_sdrmpg_vs_07_sdrmpg_rsc",
+        "selector_mode": args.selector_mode,
+        "selector": (
+            "source_val_lower_nll_01_sdrmpg_vs_07_sdrmpg_rsc"
+            if args.selector_mode == "pair_nll"
+            else "guarded_3way_source_val_selector"
+        ),
         "valid_source_only": True,
+        "guarded_3way_rule": {
+            "enabled": args.selector_mode == "guarded_3way",
+            "paperfix_conditions": [
+                "val_nll_00 < min(val_nll_01, val_nll_07)",
+                "val_acc_00 >= max(val_acc_01, val_acc_07)",
+                "val_nll_00 <= 0.32",
+            ],
+        },
         "mean_test_acc": mean([row["test_acc"] for row in rows]),
         "std_test_acc": std([row["test_acc"] for row in rows]),
         "mean_test_f1": mean([row["test_f1"] for row in rows]),
         "std_test_f1": std([row["test_f1"] for row in rows]),
         "weak_mean_test_acc": mean([row["test_acc"] for row in weak_rows]),
         "strong_mean_test_acc": mean([row["test_acc"] for row in strong_rows]),
+        "selected_model_counts": selected_model_counts,
         "baseline_07_mean_test_acc": mean([row["test_acc_07"] for row in rows]),
         "baseline_07_mean_test_f1": mean([row["test_f1_07"] for row in rows]),
         "subjects": rows,
@@ -247,16 +311,23 @@ def run_selector(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT))
+    parser.add_argument("--selector-mode", choices=["pair_nll", "guarded_3way"], default="pair_nll")
+    parser.add_argument("--output-dir", default=None)
     parser.add_argument("--subjects", default="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14")
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--gpu", default="0")
     parser.add_argument("--random-seed", type=int, default=2022)
-    parser.add_argument("--expected-acc", type=float, default=0.8000420875420875)
-    parser.add_argument("--expected-f1", type=float, default=0.7952559053268958)
+    parser.add_argument("--expected-acc", type=float, default=None)
+    parser.add_argument("--expected-f1", type=float, default=None)
     parser.add_argument("--tolerance", type=float, default=1e-10)
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
+    if args.output_dir is None:
+        args.output_dir = str(DEFAULT_GUARDED_OUTPUT if args.selector_mode == "guarded_3way" else DEFAULT_OUTPUT)
+    if args.expected_acc is None or args.expected_f1 is None:
+        expected_acc, expected_f1 = EXPECTED_RESULTS[args.selector_mode]
+        args.expected_acc = expected_acc if args.expected_acc is None else args.expected_acc
+        args.expected_f1 = expected_f1 if args.expected_f1 is None else args.expected_f1
 
     summary = run_selector(args)
     acc_ok = abs(summary["mean_test_acc"] - args.expected_acc) <= args.tolerance
