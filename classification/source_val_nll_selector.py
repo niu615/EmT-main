@@ -18,7 +18,7 @@ from run_seed_experiment import PRESETS
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RESULT_ROOT = PROJECT_ROOT / "results" / "SEED"
 DEFAULT_OUTPUT = RESULT_ROOT / "16_seed_sdrmpg_source_val_nll_selector"
-DEFAULT_GUARDED_OUTPUT = RESULT_ROOT / "17_seed_guarded_3way_source_val_selector"
+DEFAULT_GUARDED_OUTPUT = RESULT_ROOT / "27_seed_guarded_selector_paperpack"
 EXPERIMENTS = {
     "00_seed_paperfix": "paperfix",
     "01_seed_sdrmpg": "sdrmpg",
@@ -197,6 +197,104 @@ def write_csv(path, rows):
         writer.writerows(rows)
 
 
+def write_json(path, payload):
+    with path.open("w", encoding="utf-8") as file:
+        json.dump(payload, file, indent=2, ensure_ascii=False)
+
+
+def model_key(model_name):
+    return short_name(model_name)
+
+
+def summarize_delta(row):
+    return {
+        "subject": row["subject"],
+        "selected_model": row["selected_model"],
+        "test_acc": row["test_acc"],
+        "test_acc_07": row["test_acc_07"],
+        "delta_vs_07": row["delta_vs_07"],
+        "test_f1": row["test_f1"],
+        "test_f1_07": row["test_f1_07"],
+    }
+
+
+def write_paperpack_reports(output_dir, rows, summary):
+    per_subject_fields = [
+        "subject",
+        "selected_model",
+        "selection_reason",
+        "source_val_nll_00",
+        "source_val_acc_00",
+        "source_val_nll_01",
+        "source_val_acc_01",
+        "source_val_nll_07",
+        "source_val_acc_07",
+        "test_acc_00",
+        "test_acc_01",
+        "test_acc_07",
+        "test_acc",
+        "test_f1",
+        "delta_vs_07",
+    ]
+    per_subject_rows = [
+        {field: row.get(field, "") for field in per_subject_fields}
+        for row in rows
+    ]
+    write_csv(output_dir / "per_subject_selection.csv", per_subject_rows)
+    write_csv(output_dir / "delta_vs_07.csv", [summarize_delta(row) for row in rows])
+
+    short_counts = {}
+    for model_name, count in summary["selected_model_counts"].items():
+        short_counts[model_key(model_name)] = count
+    write_json(
+        output_dir / "model_count.json",
+        {
+            "selected_model_counts": summary["selected_model_counts"],
+            "short_selected_model_counts": short_counts,
+        },
+    )
+    write_json(
+        output_dir / "weak_strong_summary.json",
+        {
+            "weak_subjects": [0, 3, 7, 9, 13],
+            "strong_subjects": [10, 12, 14],
+            "weak_mean_test_acc": summary["weak_mean_test_acc"],
+            "strong_mean_test_acc": summary["strong_mean_test_acc"],
+            "baseline_07_mean_test_acc": summary["baseline_07_mean_test_acc"],
+            "selector_mean_test_acc": summary["mean_test_acc"],
+            "selector_mean_test_f1": summary["mean_test_f1"],
+        },
+    )
+
+    paper_table = [
+        "# Guarded Source-Val Selector Paper Table",
+        "",
+        "| Method | ACC | F1 | Weak ACC | Strong ACC |",
+        "|---|---:|---:|---:|---:|",
+        "| sdrmpg-rsc (07) | {:.10f} | {:.10f} | - | - |".format(
+            summary["baseline_07_mean_test_acc"],
+            summary["baseline_07_mean_test_f1"],
+        ),
+        "| Guarded 3-way selector | {:.10f} | {:.10f} | {:.10f} | {:.10f} |".format(
+            summary["mean_test_acc"],
+            summary["mean_test_f1"],
+            summary["weak_mean_test_acc"],
+            summary["strong_mean_test_acc"],
+        ),
+        "",
+        "Selected model counts: `00={}`, `01={}`, `07={}`.".format(
+            short_counts.get("00", 0),
+            short_counts.get("01", 0),
+            short_counts.get("07", 0),
+        ),
+        "",
+        "Guard rule: paperfix is selected only if `val_nll_00 < min(val_nll_01, val_nll_07)`, "
+        "`val_acc_00 >= max(val_acc_01, val_acc_07)`, and `val_nll_00 <= 0.32`; otherwise the "
+        "selector falls back to the lower source-val NLL between `sdrmpg` and `sdrmpg-rsc`.",
+    ]
+    (output_dir / "paper_table.md").write_text("\n".join(paper_table) + "\n", encoding="utf-8")
+
+
 def run_selector(args):
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -296,8 +394,8 @@ def run_selector(args):
     summary["passes_8020_gate"] = summary["mean_test_acc"] >= 0.8020
 
     write_csv(output_dir / "subject_table.csv", rows)
-    with (output_dir / "summary.json").open("w", encoding="utf-8") as file:
-        json.dump(summary, file, indent=2, ensure_ascii=False)
+    write_json(output_dir / "summary.json", summary)
+    write_paperpack_reports(output_dir, rows, summary)
 
     print(
         "Selector mean ACC={:.12f}, F1={:.12f}".format(
