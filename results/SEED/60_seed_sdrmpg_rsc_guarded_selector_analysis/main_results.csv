@@ -1,0 +1,4 @@
+method_id,role,selector_mode,valid_source_only,mean_test_acc,mean_test_f1,weak_mean_test_acc,strong_mean_test_acc,delta_acc_vs_07,selected_model_counts,paper_claim
+07_seed_sdrmpg_rsc,single-model baseline,single_model,True,0.7962962962962964,0.7852106799989614,0.7227272727272727,0.9137205387205386,0.0,{},sdrmpg-rsc single-model baseline
+16_seed_sdrmpg_source_val_nll_selector,2-way source-val selector,pair_nll,True,0.8000420875420875,0.7952559053268958,0.749368686868687,0.9088804713804713,0.003745791245791108,"{""01_seed_sdrmpg"": 7, ""07_seed_sdrmpg_rsc"": 8}",source-val NLL selector over 01/07 reaches 80.00%
+SDRMPG-RSC-GS / 27_seed_guarded_selector_paperpack,3-way guarded source-val selector,guarded_3way,True,0.8049242424242424,0.802263650661138,0.7621212121212122,0.9088804713804713,0.00862794612794604,"{""00_seed_paperfix"": 3, ""01_seed_sdrmpg"": 6, ""07_seed_sdrmpg_rsc"": 6}",sdrmpg-rsc anchored guarded selector reaches 80.49%

@@ -1,0 +1,109 @@
+{
+  "method_name": "SDRMPG-RSC-GS",
+  "method_long_name": "sdrmpg-rsc anchored source-val guarded selector",
+  "validation": {
+    "guarded_acc": 0.8049242424242424,
+    "guarded_f1": 0.802263650661138,
+    "guarded_weak_mean": 0.7621212121212122,
+    "guarded_strong_mean": 0.9088804713804713,
+    "passes_acc_802_gate": true,
+    "passes_f1_floor": true,
+    "passes_weak_floor": true,
+    "valid_source_only": true,
+    "selector_mode": "guarded_3way",
+    "protected_inputs": {
+      "07_seed_sdrmpg_rsc": "D:\\seed\\Test\\EmT-main\\results\\SEED\\07_seed_sdrmpg_rsc\\summary.json",
+      "16_seed_sdrmpg_source_val_nll_selector": "D:\\seed\\Test\\EmT-main\\results\\SEED\\16_seed_sdrmpg_source_val_nll_selector\\summary.json",
+      "27_seed_guarded_selector_paperpack": "D:\\seed\\Test\\EmT-main\\results\\SEED\\27_seed_guarded_selector_paperpack\\summary.json"
+    },
+    "generated_outputs": {
+      "main_results": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\main_results.csv",
+      "subject_selection_table": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\subject_selection_table.csv",
+      "weak_subjects": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\weak_subjects.csv",
+      "strong_subjects": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\strong_subjects.csv",
+      "failure_taxonomy": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\failure_taxonomy.csv",
+      "paper_claims": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\paper_claims.md"
+    },
+    "all_acceptance_checks_pass": true
+  },
+  "main_results": [
+    {
+      "method_id": "07_seed_sdrmpg_rsc",
+      "role": "single-model baseline",
+      "selector_mode": "single_model",
+      "valid_source_only": true,
+      "mean_test_acc": 0.7962962962962964,
+      "mean_test_f1": 0.7852106799989614,
+      "weak_mean_test_acc": 0.7227272727272727,
+      "strong_mean_test_acc": 0.9137205387205386,
+      "delta_acc_vs_07": 0.0,
+      "selected_model_counts": "{}",
+      "paper_claim": "sdrmpg-rsc single-model baseline"
+    },
+    {
+      "method_id": "16_seed_sdrmpg_source_val_nll_selector",
+      "role": "2-way source-val selector",
+      "selector_mode": "pair_nll",
+      "valid_source_only": true,
+      "mean_test_acc": 0.8000420875420875,
+      "mean_test_f1": 0.7952559053268958,
+      "weak_mean_test_acc": 0.749368686868687,
+      "strong_mean_test_acc": 0.9088804713804713,
+      "delta_acc_vs_07": 0.003745791245791108,
+      "selected_model_counts": "{\"01_seed_sdrmpg\": 7, \"07_seed_sdrmpg_rsc\": 8}",
+      "paper_claim": "source-val NLL selector over 01/07 reaches 80.00%"
+    },
+    {
+      "method_id": "SDRMPG-RSC-GS / 27_seed_guarded_selector_paperpack",
+      "role": "3-way guarded source-val selector",
+      "selector_mode": "guarded_3way",
+      "valid_source_only": true,
+      "mean_test_acc": 0.8049242424242424,
+      "mean_test_f1": 0.802263650661138,
+      "weak_mean_test_acc": 0.7621212121212122,
+      "strong_mean_test_acc": 0.9088804713804713,
+      "delta_acc_vs_07": 0.00862794612794604,
+      "selected_model_counts": "{\"00_seed_paperfix\": 3, \"01_seed_sdrmpg\": 6, \"07_seed_sdrmpg_rsc\": 6}",
+      "paper_claim": "sdrmpg-rsc anchored guarded selector reaches 80.49%"
+    }
+  ],
+  "guarded_rule": {
+    "enabled": true,
+    "paperfix_conditions": [
+      "val_nll_00 < min(val_nll_01, val_nll_07)",
+      "val_acc_00 >= max(val_acc_01, val_acc_07)",
+      "val_nll_00 <= 0.32"
+    ]
+  },
+  "selected_model_counts": {
+    "00_seed_paperfix": 3,
+    "07_seed_sdrmpg_rsc": 6,
+    "01_seed_sdrmpg": 6
+  },
+  "failure_taxonomy": [
+    {
+      "experiment_family": "MLDG-lite",
+      "observed_signal": "sub0 rose to 0.8434 but full dropped to 0.7711",
+      "failure_mode": "single weak-subject gain did not transfer to stable all-subject performance",
+      "paper_use": "negative evidence for naive episodic meta-regularization"
+    },
+    {
+      "experiment_family": "TERM-only t=0.5",
+      "observed_signal": "weak smoke passed, but sub10 dropped from 0.8990 to 0.8340",
+      "failure_mode": "tail-risk emphasis helped weak subjects but damaged strong-subject reliability",
+      "paper_use": "supports weak/strong boundary analysis"
+    },
+    {
+      "experiment_family": "TERM+RevIN",
+      "observed_signal": "sub0 engsmoke failed at 0.7273",
+      "failure_mode": "input statistic normalization disrupted the current rPSD + RSC behavior",
+      "paper_use": "negative evidence against extra normalization in this protocol"
+    },
+    {
+      "experiment_family": "seed=2023 sdrmpg-rsc",
+      "observed_signal": "weak mean reached 0.7476 but sub9 dropped to 0.6313",
+      "failure_mode": "random seed improved some weak subjects while worsening a high-risk weak subject",
+      "paper_use": "motivates guarded source-val selection instead of seed chasing"
+    }
+  ]
+}

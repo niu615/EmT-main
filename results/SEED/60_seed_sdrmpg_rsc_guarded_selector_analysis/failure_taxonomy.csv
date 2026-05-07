@@ -1,0 +1,5 @@
+experiment_family,observed_signal,failure_mode,paper_use
+MLDG-lite,sub0 rose to 0.8434 but full dropped to 0.7711,single weak-subject gain did not transfer to stable all-subject performance,negative evidence for naive episodic meta-regularization
+TERM-only t=0.5,"weak smoke passed, but sub10 dropped from 0.8990 to 0.8340",tail-risk emphasis helped weak subjects but damaged strong-subject reliability,supports weak/strong boundary analysis
+TERM+RevIN,sub0 engsmoke failed at 0.7273,input statistic normalization disrupted the current rPSD + RSC behavior,negative evidence against extra normalization in this protocol
+seed=2023 sdrmpg-rsc,weak mean reached 0.7476 but sub9 dropped to 0.6313,random seed improved some weak subjects while worsening a high-risk weak subject,motivates guarded source-val selection instead of seed chasing
