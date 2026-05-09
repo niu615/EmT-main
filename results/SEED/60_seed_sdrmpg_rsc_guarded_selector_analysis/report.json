@@ -21,8 +21,14 @@
       "subject_selection_table": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\subject_selection_table.csv",
       "weak_subjects": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\weak_subjects.csv",
       "strong_subjects": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\strong_subjects.csv",
+      "subject_boundary_analysis": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\subject_boundary_analysis.csv",
+      "weak_strong_boundary_summary": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\weak_strong_boundary_summary.csv",
       "failure_taxonomy": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\failure_taxonomy.csv",
-      "paper_claims": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\paper_claims.md"
+      "paper_claims": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\paper_claims.md",
+      "manuscript_outline": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\manuscript_outline.md",
+      "protocol_compliance": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\protocol_compliance.md",
+      "experiment_governance": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\experiment_governance.md",
+      "reference_notes": "D:\\seed\\Test\\EmT-main\\results\\SEED\\60_seed_sdrmpg_rsc_guarded_selector_analysis\\reference_notes.md"
     },
     "all_acceptance_checks_pass": true
   },
@@ -80,6 +86,41 @@
     "07_seed_sdrmpg_rsc": 6,
     "01_seed_sdrmpg": 6
   },
+  "weak_strong_boundary_summary": [
+    {
+      "group": "weak",
+      "num_subjects": 5,
+      "baseline_07_test_acc": 0.7227272727272727,
+      "baseline_07_source_val_acc": 0.8801623083859333,
+      "baseline_07_val_test_gap": 0.15743503565866068,
+      "pair_16_test_acc": 0.7493686868686869,
+      "pair_16_delta_vs_07": 0.026641414141414188,
+      "guarded_27_test_acc": 0.7621212121212121,
+      "guarded_27_delta_vs_07": 0.039393939393939426
+    },
+    {
+      "group": "strong",
+      "num_subjects": 3,
+      "baseline_07_test_acc": 0.9137205387205386,
+      "baseline_07_source_val_acc": 0.838668470093177,
+      "baseline_07_val_test_gap": -0.07505206862736158,
+      "pair_16_test_acc": 0.9088804713804715,
+      "pair_16_delta_vs_07": -0.0048400673400671446,
+      "guarded_27_test_acc": 0.9088804713804715,
+      "guarded_27_delta_vs_07": -0.0048400673400671446
+    },
+    {
+      "group": "all",
+      "num_subjects": 15,
+      "baseline_07_test_acc": 0.7962962962962963,
+      "baseline_07_source_val_acc": 0.8736699729486024,
+      "baseline_07_val_test_gap": 0.0773736766523061,
+      "pair_16_test_acc": 0.8000420875420875,
+      "pair_16_delta_vs_07": 0.003745791245791219,
+      "guarded_27_test_acc": 0.8049242424242424,
+      "guarded_27_delta_vs_07": 0.008627946127946151
+    }
+  ],
   "failure_taxonomy": [
     {
       "experiment_family": "MLDG-lite",
@@ -98,6 +139,12 @@
       "observed_signal": "sub0 engsmoke failed at 0.7273",
       "failure_mode": "input statistic normalization disrupted the current rPSD + RSC behavior",
       "paper_use": "negative evidence against extra normalization in this protocol"
+    },
+    {
+      "experiment_family": "NLL guarded checkpointing",
+      "observed_signal": "weak smoke passed at 0.7465, but strong smoke failed with sub12=0.8340",
+      "failure_mode": "source-val NLL checkpoint selection helped weak-side behavior but damaged a strong subject",
+      "paper_use": "supports guarded model reliability over single-checkpoint optimization"
     },
     {
       "experiment_family": "seed=2023 sdrmpg-rsc",
