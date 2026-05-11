@@ -1,0 +1,24 @@
+{
+  "weak_subjects": [
+    0,
+    3,
+    7,
+    9,
+    13
+  ],
+  "strong_subjects": [
+    10,
+    12,
+    14
+  ],
+  "v2_weak_mean_test_acc": 0.7607323232323232,
+  "v2_strong_mean_test_acc": 0.9137205387205387,
+  "baseline_27_weak_mean_test_acc": 0.7621212121212122,
+  "baseline_27_strong_mean_test_acc": 0.9088804713804713,
+  "baseline_07_weak_mean_test_acc": 0.7227272727272727,
+  "baseline_07_strong_mean_test_acc": 0.9137205387205387,
+  "weak_delta_vs_27": -0.001388888888888995,
+  "strong_delta_vs_27": 0.004840067340067367,
+  "weak_delta_vs_07": 0.03800505050505054,
+  "strong_delta_vs_07": 0.0
+}
