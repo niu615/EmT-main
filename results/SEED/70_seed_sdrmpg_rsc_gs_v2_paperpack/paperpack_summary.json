@@ -1,0 +1,10 @@
+{
+  "main_result": "69_seed_sdrmpg_rsc_guarded_selector_v2",
+  "main_acc": 0.8105218855218855,
+  "main_f1": 0.8046507845506733,
+  "baseline_07_acc": 0.7962962962962964,
+  "baseline_27_acc": 0.8049242424242424,
+  "valid_source_only": true,
+  "sensitivity_passes_main_gates": 27,
+  "sensitivity_total": 27
+}
