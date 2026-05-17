@@ -301,7 +301,7 @@ class EmT(nn.Module):
             nn.Linear(hidden_graph, num_class)
         )
 
-    def forward(self, x):
+    def forward(self, x, return_feature=False):
         # x: batch, sequence, chan, feature
         b, s, chan, f = x.size()
         x = rearrange(x, 'b s c f  -> (b s) c f')
@@ -320,9 +320,37 @@ class EmT(nn.Module):
         # temporal contextual transformer
         x = rearrange(x, '(b s) h -> b s h', b=b, s=s)
         x = self.transformer(x)
-        x = torch.mean(x, dim=-2)
-        x = self.MLP(x)
-        return x
+        feature = torch.mean(x, dim=-2)
+        logits = self.MLP(feature)
+        if return_feature:
+            return logits, feature
+        return logits
+
+    def forward_mixup(self, x, labels, mixup_alpha=0.4):
+        """Forward with Manifold Mixup at feature level."""
+        b, s, chan, f = x.size()
+        x = rearrange(x, 'b s c f  -> (b s) c f')
+        if self.graph_encoder_type == 'Cheby':
+            adjs = self.get_adj(self_loop=False)
+        else:
+            adjs = self.get_adj()
+
+        x_ = x.view(x.size(0), -1)
+        x_ = self.to_GNN_out(x_)
+        x1 = self.GE1(x, adjs[0])
+        x2 = self.GE2(x, adjs[1])
+        x = torch.stack((x_, x1, x2), dim=1)
+        x = torch.mean(x, dim=1)
+        x = rearrange(x, '(b s) h -> b s h', b=b, s=s)
+        x = self.transformer(x)
+        feature = torch.mean(x, dim=-2)
+
+        # Manifold Mixup
+        lam = torch.distributions.Beta(mixup_alpha, mixup_alpha).sample().item()
+        idx = torch.randperm(feature.size(0), device=feature.device)
+        mixed_feature = lam * feature + (1 - lam) * feature[idx]
+        logits = self.MLP(mixed_feature)
+        return logits, mixed_feature, labels, labels[idx], lam
 
     def get_adj(self, self_loop=True):
         # self.adjs : n, node, node

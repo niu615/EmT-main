@@ -90,7 +90,7 @@ class FACED(PrepareData):
 
         sub_code = str('sub'+str(sub).zfill(3) + '.pkl')
         subject_path = os.path.join(self.data_path, "Processed_data", sub_code)
-        rating_path = os.path.join(self.data_path, "Rating", 'sub'+str(sub).zfill(3), "After_remarks.mat")
+        rating_path = os.path.join(self.data_path, "Data", 'sub'+str(sub).zfill(3), "After_remarks.mat")
         data = self.process_data(subject_path)
         data = np.moveaxis(data, [-1, 0], [0, -1])
         data = self.reorder_channel(data=data, graph_type=self.args.graph_type, graph_idx=self.graph_idx)
