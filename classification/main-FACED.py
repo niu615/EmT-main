@@ -48,10 +48,10 @@ if __name__ == '__main__':
     parser.add_argument('--LS', type=int, default=1)
     parser.add_argument('--LS-rate', type=float, default=0.1)
     # Supervised Contrastive Learning
-    parser.add_argument('--supcon-weight', type=float, default=0.3)
-    parser.add_argument('--supcon-temperature', type=float, default=0.05)
+    parser.add_argument('--supcon-weight', type=float, default=0.1)
+    parser.add_argument('--supcon-temperature', type=float, default=0.07)
     # Manifold Mixup
-    parser.add_argument('--use-mixup', type=int, default=1, choices=[0, 1])
+    parser.add_argument('--use-mixup', type=int, default=0, choices=[0, 1])
     parser.add_argument('--mixup-alpha', type=float, default=0.4)
 
     parser.add_argument('--save-path', default=os.path.join(str(PROJECT_ROOT), 'classification', 'save'))
