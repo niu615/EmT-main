@@ -80,10 +80,10 @@ def get_model(args):
     return model
 
 
-def get_dataloader(data, label, batch_size):
+def get_dataloader(data, label, batch_size, shuffle=True):
     # load the data
     dataset = eegDataset(data, label)
-    loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
+    loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True)
     return loader
 
 

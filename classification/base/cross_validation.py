@@ -226,7 +226,8 @@ class CrossValidation:
             subjects_list = subjects_list[:-2] + [combined_list]
 
         train_rate = 0.9
-        for fold_num, n_subs in enumerate(subjects_list):
+        max_folds = min(getattr(self.args, 'fold_to_run', len(subjects_list)), len(subjects_list))
+        for fold_num, n_subs in enumerate(subjects_list[:max_folds]):
             va_val = Averager()
             preds, acts = [], []
             data_train, label_train, data_test, label_test = [], [], [], []

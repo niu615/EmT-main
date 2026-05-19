@@ -53,6 +53,20 @@ if __name__ == '__main__':
     # Manifold Mixup
     parser.add_argument('--use-mixup', type=int, default=1, choices=[0, 1])
     parser.add_argument('--mixup-alpha', type=float, default=0.4)
+    # Subject-adaptive prototype calibration
+    parser.add_argument('--prototype-weight', type=float, default=0.02)
+    parser.add_argument('--prototype-margin', type=float, default=0.2)
+    parser.add_argument('--use-ema', type=int, default=1, choices=[0, 1])
+    parser.add_argument('--ema-decay', type=float, default=0.995)
+    parser.add_argument('--ema-start-ratio', type=float, default=0.6)
+    parser.add_argument('--use-sapc', type=int, default=1, choices=[0, 1])
+    parser.add_argument('--sapc-prototype-scale', type=float, default=5.0)
+    parser.add_argument('--sapc-prototype-weights', type=str, default='0,0.05,0.1,0.2,0.3')
+    parser.add_argument('--use-logit-calibration', type=int, default=1, choices=[0, 1])
+    parser.add_argument('--calibration-steps', type=int, default=121)
+    parser.add_argument('--val-acc-weight', type=float, default=0.5)
+    parser.add_argument('--val-f1-weight', type=float, default=0.5)
+    parser.add_argument('--val-loss-weight', type=float, default=0.05)
 
     parser.add_argument('--save-path', default=os.path.join(str(PROJECT_ROOT), 'classification', 'save'))
     parser.add_argument('--load-path', default=os.path.join(str(PROJECT_ROOT), 'classification', 'save', 'candidate.pth'))
@@ -75,6 +89,9 @@ if __name__ == '__main__':
     parser.add_argument('--reproduce', type=int, default=0)
     args = parser.parse_args()
     args.use_mixup = bool(args.use_mixup)
+    args.use_ema = bool(args.use_ema)
+    args.use_sapc = bool(args.use_sapc)
+    args.use_logit_calibration = bool(args.use_logit_calibration)
     sub_to_run = np.arange(args.subjects)
 
     if not args.data_exist:
