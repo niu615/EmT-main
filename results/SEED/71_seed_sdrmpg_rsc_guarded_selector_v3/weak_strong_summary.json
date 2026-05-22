@@ -1,0 +1,20 @@
+{
+  "weak_subjects": [
+    0,
+    3,
+    7,
+    9,
+    13
+  ],
+  "strong_subjects": [
+    10,
+    12,
+    14
+  ],
+  "v3_weak_mean_test_acc": 0.7621212121212121,
+  "v3_strong_mean_test_acc": 0.9227693602693603,
+  "baseline_69_weak_mean_test_acc": 0.7607323232323232,
+  "baseline_69_strong_mean_test_acc": 0.9137205387205387,
+  "weak_delta_vs_69": 0.001388888888888884,
+  "strong_delta_vs_69": 0.009048821548821584
+}
