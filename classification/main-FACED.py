@@ -51,7 +51,7 @@ if __name__ == '__main__':
     parser.add_argument('--supcon-weight', type=float, default=0.3)
     parser.add_argument('--supcon-temperature', type=float, default=0.05)
     # Manifold Mixup
-    parser.add_argument('--use-mixup', type=int, default=1, choices=[0, 1])
+    parser.add_argument('--use-mixup', type=int, default=0, choices=[0, 1])
     parser.add_argument('--mixup-alpha', type=float, default=0.4)
     # Subject-adaptive prototype calibration
     parser.add_argument('--prototype-weight', type=float, default=0.02)
